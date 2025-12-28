@@ -107,7 +107,7 @@ function registerBrowser(browserId, tf) {
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'ok',
-    version: '2.1.0',
+    version: '2.2.0',
     browsers: Object.keys(connectedBrowsers).length,
     leader: syncState.leaderId ? syncState.leaderId.slice(-8) : 'none'
   });
@@ -116,13 +116,16 @@ app.get('/health', (req, res) => {
 // GET /sync-state - Read current state + browser stats
 app.get('/sync-state', (req, res) => {
   const browserId = req.query.browserId;
+  const tf = req.query.tf;
   
   // Register browser heartbeat if provided
   if (browserId) {
-    registerBrowser(browserId, req.query.tf);
+    registerBrowser(browserId, tf);
   }
   
   const browserStats = getBrowserStats();
+  
+  console.log(`📡 GET /sync-state from ${browserId?.slice(-8) || 'unknown'} (tf=${tf || '?'}), browsers: ${browserStats.browsersOnline}/${browserStats.totalBrowsers}`);
   
   res.json({
     ...syncState,
@@ -139,12 +142,16 @@ app.post('/sync-state', (req, res) => {
     registerBrowser(leaderId, req.body.tf);
   }
   
-  // Update sync state
+  // Only update leadership heartbeat if sender IS the current leader
+  if (leaderId && leaderId === syncState.leaderId) {
+    syncState.leaderHeartbeat = leaderHeartbeat || Date.now();
+  }
+  
+  // Update other sync state (symbol, position, etc) - but NOT leaderId
+  const { leaderId: _, leaderHeartbeat: __, ...stateUpdates } = rest;
   syncState = { 
     ...syncState, 
-    ...rest,
-    leaderId: leaderId || syncState.leaderId,
-    leaderHeartbeat: leaderHeartbeat || syncState.leaderHeartbeat
+    ...stateUpdates
   };
   
   const browserStats = getBrowserStats();
@@ -264,7 +271,7 @@ app.get('/', (req, res) => {
   const browserStats = getBrowserStats();
   res.json({
     name: 'TradingView Sync Server',
-    version: '2.1.0',
+    version: '2.2.0',
     endpoints: [
       'GET /health',
       'GET /sync-state',
@@ -287,7 +294,7 @@ app.get('/', (req, res) => {
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-  console.log(`✅ TradingView Sync Server v2.1 running on port ${PORT}`);
+  console.log(`✅ TradingView Sync Server v2.2 running on port ${PORT}`);
   console.log(`📡 Health: http://localhost:${PORT}/health`);
   console.log(`🔄 Sync State: http://localhost:${PORT}/sync-state`);
   console.log(`👥 Browsers: http://localhost:${PORT}/browsers`);
