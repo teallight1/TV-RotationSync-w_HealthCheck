@@ -31,7 +31,7 @@ let syncState = {
 let connectedBrowsers = {};
 
 // Clean up stale browsers every 10 seconds
-const BROWSER_TIMEOUT = 15000; // 15 seconds without heartbeat = offline
+const BROWSER_TIMEOUT = 30000; // 30 seconds without heartbeat = offline (was 15s)
 setInterval(() => {
   const now = Date.now();
   let cleaned = 0;
@@ -60,17 +60,34 @@ setInterval(() => {
 // ===========================
 
 function getBrowserStats() {
-  const browsers = Object.entries(connectedBrowsers).map(([id, info]) => ({
-    id: id.slice(-8),
-    browserId: id,
-    isLeader: syncState.leaderId === id,
-    lastSeen: Math.round((Date.now() - info.lastSeen) / 1000) + 's ago',
-    tf: info.tf || '5'
-  }));
+  const now = Date.now();
+  const browsers = Object.entries(connectedBrowsers).map(([id, info]) => {
+    const isLeader = syncState.leaderId === id;
+    const secondsAgo = Math.round((now - info.lastSeen) / 1000);
+    
+    // Determine status based on last seen time and leader status
+    let status = 'online';
+    if (isLeader) {
+      status = 'leader';
+    } else if (secondsAgo > 10) {
+      status = 'warning';
+    } else if (secondsAgo > 20) {
+      status = 'offline';
+    }
+    
+    return {
+      id: id.slice(-8),
+      browserId: id,
+      isLeader: isLeader,
+      status: status,
+      lastSeen: secondsAgo + 's ago',
+      tf: info.tf || '5'
+    };
+  });
   
   return {
     totalBrowsers: browsers.length,
-    browsersOnline: browsers.length,
+    browsersOnline: browsers.filter(b => b.status !== 'offline').length,
     browsersList: browsers
   };
 }
@@ -90,7 +107,7 @@ function registerBrowser(browserId, tf) {
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'ok',
-    version: '2.0.0',
+    version: '2.1.0',
     browsers: Object.keys(connectedBrowsers).length,
     leader: syncState.leaderId ? syncState.leaderId.slice(-8) : 'none'
   });
@@ -247,7 +264,7 @@ app.get('/', (req, res) => {
   const browserStats = getBrowserStats();
   res.json({
     name: 'TradingView Sync Server',
-    version: '2.0.0',
+    version: '2.1.0',
     endpoints: [
       'GET /health',
       'GET /sync-state',
@@ -270,7 +287,7 @@ app.get('/', (req, res) => {
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-  console.log(`✅ TradingView Sync Server v2 running on port ${PORT}`);
+  console.log(`✅ TradingView Sync Server v2.1 running on port ${PORT}`);
   console.log(`📡 Health: http://localhost:${PORT}/health`);
   console.log(`🔄 Sync State: http://localhost:${PORT}/sync-state`);
   console.log(`👥 Browsers: http://localhost:${PORT}/browsers`);
